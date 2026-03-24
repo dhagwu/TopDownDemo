@@ -3,71 +3,79 @@ using UnityEngine.InputSystem;
 
 public class PlayerAttack : MonoBehaviour
 {
+    [Header("Input")]
     [SerializeField] private InputActionReference attackAction;
+
+    [Header("Config")]
+    [SerializeField] private PlayerConfigSO config;
+
+    [Header("References")]
     [SerializeField] private Transform attackPoint;
     [SerializeField] private Animator animator;
-    [SerializeField] private float attackRadius = 1.2f;
-    [SerializeField] private int damage = 1;
-    [SerializeField] private float cooldown = 0.35f;
-    [SerializeField] private LayerMask enemyMask;
+    [SerializeField] private LayerMask enemyLayer;
 
-    private float cooldownTimer;
+    private float attackCooldownTimer;
 
     private void OnEnable()
     {
-        attackAction.action.Enable();
-        attackAction.action.performed += OnAttack;
+        if (attackAction != null)
+        {
+            attackAction.action.Enable();
+            attackAction.action.performed += OnAttack;
+        }
     }
 
     private void OnDisable()
     {
-        attackAction.action.performed -= OnAttack;
-        attackAction.action.Disable();
+        if (attackAction != null)
+        {
+            attackAction.action.performed -= OnAttack;
+            attackAction.action.Disable();
+        }
     }
 
     private void Update()
     {
-        if (cooldownTimer > 0f)
-            cooldownTimer -= Time.deltaTime;
+        if (attackCooldownTimer > 0f)
+            attackCooldownTimer -= Time.deltaTime;
     }
 
     private void OnAttack(InputAction.CallbackContext ctx)
     {
-        if (cooldownTimer > 0f) return;
+        if (config == null || attackPoint == null)
+            return;
 
-        cooldownTimer = cooldown;
+        if (attackCooldownTimer > 0f)
+            return;
+
+        attackCooldownTimer = config.attackCooldown;
 
         if (animator != null)
-        {
             animator.SetTrigger("Attack");
-        }
 
         Collider[] hits = Physics.OverlapSphere(
             attackPoint.position,
-            attackRadius,
-            enemyMask
+            config.attackRadius,
+            enemyLayer
         );
 
         foreach (Collider hit in hits)
         {
-            MonoBehaviour[] components = hit.GetComponentsInParent<MonoBehaviour>();
-
-            foreach (MonoBehaviour component in components)
+            IDamageable damageable = hit.GetComponentInParent<IDamageable>();
+            if (damageable != null)
             {
-                if (component is IDamageable damageable)
-                {
-                    damageable.TakeDamage(damage);
-                    break;
-                }
+                damageable.TakeDamage(config.attackDamage);
             }
         }
     }
 
     private void OnDrawGizmosSelected()
     {
-        if (attackPoint == null) return;
+        if (attackPoint == null)
+            return;
 
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(attackPoint.position, attackRadius);
+        float radius = config != null ? config.attackRadius : 1f;
+        Gizmos.DrawWireSphere(attackPoint.position, radius);
     }
 }

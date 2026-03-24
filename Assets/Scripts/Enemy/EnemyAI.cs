@@ -1,147 +1,284 @@
 using UnityEngine;
 using UnityEngine.AI;
 
-[RequireComponent(typeof(NavMeshAgent))]
 public class EnemyAI : MonoBehaviour, IDamageable
 {
+    [Header("Config")]
+    [SerializeField] private EnemyConfigSO config;
+
     [Header("References")]
-    [SerializeField] private Transform player;
-    [SerializeField] private Animator animator;
-
-    [Header("Stats")]
-    [SerializeField] private int maxHp = 3;
-
-    [Header("Detection")]
-    [SerializeField] private float detectRange = 8f;
-    [SerializeField] private float attackRange = 1.5f;
-
-    [Header("Attack")]
-    [SerializeField] private float attackCooldown = 1f;
-    [SerializeField] private int contactDamage = 1;
-
-    [Header("Patrol")]
+    [SerializeField] private NavMeshAgent agent;
     [SerializeField] private Transform[] patrolPoints;
+    [SerializeField] private Animator animator;
+    [SerializeField] private Transform player;
+    [SerializeField] private PlayerStats playerStats;
+    [SerializeField] private HUDController hudController;
+
+    [Header("Debug")]
+    [SerializeField] private bool drawGizmos = true;
 
     private int currentHp;
     private int patrolIndex;
-    private float attackTimer;
+    private float patrolWaitTimer;
+    private float attackCooldownTimer;
 
-    private NavMeshAgent agent;
-    private PlayerStats playerStats;
+    private enum EnemyState
+    {
+        Patrol,
+        Chase
+    }
+
+    private EnemyState currentState;
+
+    private float PatrolSpeed => config != null ? config.patrolSpeed : 2f;
+    private float ChaseSpeed => config != null ? config.chaseSpeed : 3.5f;
+    private float PatrolWaitTime => config != null ? config.patrolWaitTime : 0.5f;
+    private float DetectRange => config != null ? config.detectRange : 6f;
+    private float AttackRange => config != null ? config.attackRange : 1.2f;
+    private float AttackCooldown => config != null ? config.attackCooldown : 1f;
+    private int ContactDamage => config != null ? config.contactDamage : 1;
+    private int MaxHp => config != null ? config.maxHp : 3;
 
     private void Awake()
     {
-        agent = GetComponent<NavMeshAgent>();
-        currentHp = maxHp;
+        if (agent == null)
+            agent = GetComponent<NavMeshAgent>();
     }
 
     private void Start()
     {
-        if (!agent.isOnNavMesh)
-        {
-            Debug.LogWarning($"{gameObject.name} is not on NavMesh.");
-            return;
-        }
+        TryResolveSceneReferences();
 
-        if (player == null)
-        {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
-            {
-                player = playerObj.transform;
-            }
-            else
-            {
-                Debug.LogWarning($"{gameObject.name} could not find Player by tag.");
-            }
-        }
+        currentHp = MaxHp;
+        currentState = EnemyState.Patrol;
+        patrolWaitTimer = PatrolWaitTime;
 
-        if (player != null)
-        {
-            playerStats = player.GetComponent<PlayerStats>();
-        }
-
-        if (patrolPoints != null && patrolPoints.Length > 0)
-        {
-            patrolIndex = 0;
-            agent.SetDestination(patrolPoints[patrolIndex].position);
-        }
+        ApplyPatrolSettings();
+        GoToCurrentPatrolPoint();
+        UpdateAnimatorSpeed();
     }
 
     private void Update()
     {
-        if (!agent.isOnNavMesh) return;
+        if (attackCooldownTimer > 0f)
+            attackCooldownTimer -= Time.deltaTime;
 
-        if (attackTimer > 0f)
-            attackTimer -= Time.deltaTime;
+        TryResolveSceneReferences();
 
-        if (player == null)
+        bool hasPlayer = player != null;
+        float distanceToPlayer = hasPlayer
+            ? Vector3.Distance(transform.position, player.position)
+            : float.MaxValue;
+
+        if (hasPlayer && distanceToPlayer <= DetectRange)
         {
-            Patrol();
-            UpdateAnimatorSpeed();
-            return;
-        }
-
-        float distance = Vector3.Distance(transform.position, player.position);
-
-        if (distance <= detectRange)
-        {
-            agent.isStopped = false;
-            agent.SetDestination(player.position);
-
-            if (distance <= attackRange)
-            {
-                agent.isStopped = true;
-
-                if (attackTimer <= 0f && playerStats != null)
-                {
-                    playerStats.TakeDamage(contactDamage);
-                    attackTimer = attackCooldown;
-
-                    if (animator != null)
-                    {
-                        animator.SetTrigger("Attack");
-                    }
-                }
-            }
+            UpdateChase(distanceToPlayer);
         }
         else
         {
-            Patrol();
+            UpdatePatrol();
         }
 
         UpdateAnimatorSpeed();
     }
 
-    private void Patrol()
+    private void TryResolveSceneReferences()
     {
-        if (patrolPoints == null || patrolPoints.Length == 0) return;
+        if (playerStats == null)
+            playerStats = FindFirstObjectByType<PlayerStats>();
 
-        agent.isStopped = false;
+        if (player == null && playerStats != null)
+            player = playerStats.transform;
 
-        if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
+        if (hudController == null)
+            hudController = FindFirstObjectByType<HUDController>();
+    }
+
+    private void UpdatePatrol()
+    {
+        if (currentState != EnemyState.Patrol)
         {
-            patrolIndex = (patrolIndex + 1) % patrolPoints.Length;
-            agent.SetDestination(patrolPoints[patrolIndex].position);
+            EnterPatrolState();
+        }
+
+        if (agent == null || !agent.isOnNavMesh)
+            return;
+
+        if (patrolPoints == null || patrolPoints.Length == 0)
+        {
+            agent.isStopped = true;
+            return;
+        }
+
+        if (agent.pathPending)
+            return;
+
+        bool reachedPoint = !agent.hasPath ||
+                            agent.remainingDistance <= Mathf.Max(agent.stoppingDistance, 0.05f);
+
+        if (!reachedPoint)
+        {
+            patrolWaitTimer = PatrolWaitTime;
+            return;
+        }
+
+        patrolWaitTimer -= Time.deltaTime;
+
+        if (patrolWaitTimer <= 0f)
+        {
+            patrolIndex++;
+            if (patrolIndex >= patrolPoints.Length)
+                patrolIndex = 0;
+
+            GoToCurrentPatrolPoint();
+            patrolWaitTimer = PatrolWaitTime;
         }
     }
 
-    private void UpdateAnimatorSpeed()
+    private void UpdateChase(float distanceToPlayer)
     {
-        if (animator != null)
+        if (currentState != EnemyState.Chase)
         {
-            animator.SetFloat("Speed", agent.velocity.magnitude);
+            EnterChaseState();
         }
+
+        if (agent == null || !agent.isOnNavMesh || player == null)
+            return;
+
+        if (distanceToPlayer > AttackRange)
+        {
+            if (agent.isStopped)
+                agent.isStopped = false;
+
+            agent.stoppingDistance = AttackRange;
+            agent.SetDestination(player.position);
+            return;
+        }
+
+        if (!agent.isStopped)
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
+        }
+
+        TryAttack();
+    }
+
+    private void EnterPatrolState()
+    {
+        currentState = EnemyState.Patrol;
+        ApplyPatrolSettings();
+
+        if (patrolPoints != null && patrolPoints.Length > 0)
+        {
+            if (patrolIndex >= patrolPoints.Length)
+                patrolIndex = 0;
+
+            GoToCurrentPatrolPoint();
+        }
+
+        patrolWaitTimer = PatrolWaitTime;
+    }
+
+    private void EnterChaseState()
+    {
+        currentState = EnemyState.Chase;
+        ApplyChaseSettings();
+    }
+
+    private void ApplyPatrolSettings()
+    {
+        if (agent == null)
+            return;
+
+        agent.speed = PatrolSpeed;
+        agent.stoppingDistance = 0f;
+        agent.isStopped = false;
+    }
+
+    private void ApplyChaseSettings()
+    {
+        if (agent == null)
+            return;
+
+        agent.speed = ChaseSpeed;
+        agent.stoppingDistance = AttackRange;
+        agent.isStopped = false;
+    }
+
+    private void GoToCurrentPatrolPoint()
+    {
+        if (agent == null || !agent.isOnNavMesh)
+            return;
+
+        if (patrolPoints == null || patrolPoints.Length == 0)
+            return;
+
+        Transform targetPoint = patrolPoints[patrolIndex];
+        if (targetPoint == null)
+            return;
+
+        agent.isStopped = false;
+        agent.SetDestination(targetPoint.position);
+    }
+
+    private void TryAttack()
+    {
+        if (attackCooldownTimer > 0f)
+            return;
+
+        attackCooldownTimer = AttackCooldown;
+
+        if (animator != null)
+            animator.SetTrigger("Attack");
+
+        if (playerStats != null)
+            playerStats.TakeDamage(ContactDamage);
     }
 
     public void TakeDamage(int value)
     {
-        currentHp -= value;
-        Debug.Log($"{gameObject.name} HP = {currentHp}");
+        currentHp = Mathf.Clamp(currentHp - value, 0, MaxHp);
 
         if (currentHp <= 0)
         {
-            Destroy(gameObject);
+            Die();
         }
+    }
+
+    private void Die()
+    {
+        if (hudController != null)
+            hudController.AddKill();
+
+        Destroy(gameObject);
+    }
+
+    private void UpdateAnimatorSpeed()
+    {
+        if (animator == null)
+            return;
+
+        float speedValue = 0f;
+
+        if (agent != null)
+            speedValue = agent.velocity.magnitude;
+
+        animator.SetFloat("Speed", speedValue);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!drawGizmos)
+            return;
+
+        float detect = config != null ? config.detectRange : 6f;
+        float attack = config != null ? config.attackRange : 1.2f;
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detect);
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, attack);
     }
 }

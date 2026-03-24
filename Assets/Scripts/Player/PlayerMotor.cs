@@ -8,23 +8,18 @@ public class PlayerMotor : MonoBehaviour
     [SerializeField] private InputActionReference moveAction;
     [SerializeField] private InputActionReference dashAction;
 
+    [Header("Config")]
+    [SerializeField] private PlayerConfigSO config;
+
     [Header("References")]
     [SerializeField] private Transform modelRoot;
     [SerializeField] private Animator animator;
-
-    [Header("Move Settings")]
-    [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private float turnSpeed = 12f;
-    [SerializeField] private float gravity = -20f;
-
-    [Header("Dash Settings")]
-    [SerializeField] private float dashSpeed = 12f;
-    [SerializeField] private float dashDuration = 0.12f;
 
     private CharacterController controller;
     private Vector3 verticalVelocity;
     private Vector3 dashDirection;
     private float dashTimer;
+    private float dashCooldownTimer;
 
     private void Awake()
     {
@@ -33,50 +28,54 @@ public class PlayerMotor : MonoBehaviour
 
     private void OnEnable()
     {
-        moveAction.action.Enable();
-        dashAction.action.Enable();
-        dashAction.action.performed += OnDash;
+        if (moveAction != null)
+            moveAction.action.Enable();
+
+        if (dashAction != null)
+        {
+            dashAction.action.Enable();
+            dashAction.action.performed += OnDash;
+        }
     }
 
     private void OnDisable()
     {
-        dashAction.action.performed -= OnDash;
-        moveAction.action.Disable();
-        dashAction.action.Disable();
+        if (dashAction != null)
+        {
+            dashAction.action.performed -= OnDash;
+            dashAction.action.Disable();
+        }
+
+        if (moveAction != null)
+            moveAction.action.Disable();
     }
 
     private void Update()
     {
+        if (config == null || moveAction == null)
+            return;
+
+        if (dashCooldownTimer > 0f)
+            dashCooldownTimer -= Time.deltaTime;
+
         Vector2 input = moveAction.action.ReadValue<Vector2>();
+        Vector3 moveDir = GetCameraRelativeMove(input);
 
-        Vector3 camForward = Camera.main.transform.forward;
-        Vector3 camRight = Camera.main.transform.right;
-
-        camForward.y = 0f;
-        camRight.y = 0f;
-        camForward.Normalize();
-        camRight.Normalize();
-
-        Vector3 moveDir = camForward * input.y + camRight * input.x;
-
-        if (moveDir.sqrMagnitude > 1f)
-            moveDir.Normalize();
-
-        float currentSpeed = moveSpeed;
-
-        if (dashTimer > 0f)
+        bool isDashing = dashTimer > 0f;
+        if (isDashing)
         {
             dashTimer -= Time.deltaTime;
             moveDir = dashDirection;
-            currentSpeed = dashSpeed;
         }
 
         if (controller.isGrounded && verticalVelocity.y < 0f)
             verticalVelocity.y = -2f;
 
-        verticalVelocity.y += gravity * Time.deltaTime;
+        verticalVelocity.y += config.gravity * Time.deltaTime;
 
+        float currentSpeed = isDashing ? config.dashSpeed : config.moveSpeed;
         Vector3 finalMove = moveDir * currentSpeed + verticalVelocity;
+
         controller.Move(finalMove * Time.deltaTime);
 
         if (moveDir.sqrMagnitude > 0.001f && modelRoot != null)
@@ -85,30 +84,64 @@ public class PlayerMotor : MonoBehaviour
             modelRoot.rotation = Quaternion.Slerp(
                 modelRoot.rotation,
                 targetRot,
-                turnSpeed * Time.deltaTime
+                config.turnSpeed * Time.deltaTime
             );
         }
 
         if (animator != null)
         {
-            animator.SetFloat("Speed", moveDir.magnitude);
+            float speedValue = moveDir.magnitude;
+            animator.SetFloat("Speed", speedValue);
         }
+    }
+
+    private Vector3 GetCameraRelativeMove(Vector2 input)
+    {
+        Vector3 moveDir;
+
+        if (Camera.main == null)
+        {
+            moveDir = new Vector3(input.x, 0f, input.y);
+            if (moveDir.sqrMagnitude > 1f)
+                moveDir.Normalize();
+            return moveDir;
+        }
+
+        Transform cam = Camera.main.transform;
+
+        Vector3 camForward = cam.forward;
+        Vector3 camRight = cam.right;
+
+        camForward.y = 0f;
+        camRight.y = 0f;
+
+        camForward.Normalize();
+        camRight.Normalize();
+
+        moveDir = camForward * input.y + camRight * input.x;
+
+        if (moveDir.sqrMagnitude > 1f)
+            moveDir.Normalize();
+
+        return moveDir;
     }
 
     private void OnDash(InputAction.CallbackContext ctx)
     {
+        if (config == null || moveAction == null)
+            return;
+
+        if (dashCooldownTimer > 0f)
+            return;
+
         Vector2 input = moveAction.action.ReadValue<Vector2>();
-        if (input.sqrMagnitude <= 0.01f) return;
+        Vector3 moveDir = GetCameraRelativeMove(input);
 
-        Vector3 camForward = Camera.main.transform.forward;
-        Vector3 camRight = Camera.main.transform.right;
+        if (moveDir.sqrMagnitude <= 0.001f)
+            return;
 
-        camForward.y = 0f;
-        camRight.y = 0f;
-        camForward.Normalize();
-        camRight.Normalize();
-
-        dashDirection = (camForward * input.y + camRight * input.x).normalized;
-        dashTimer = dashDuration;
+        dashDirection = moveDir.normalized;
+        dashTimer = config.dashDuration;
+        dashCooldownTimer = config.dashCooldown;
     }
 }

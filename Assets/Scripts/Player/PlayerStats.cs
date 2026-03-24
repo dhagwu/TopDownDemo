@@ -1,24 +1,52 @@
+using System;
 using UnityEngine;
 
 public class PlayerStats : MonoBehaviour
 {
-    [SerializeField] private int maxHp = 5;
+    [Header("Config")]
+    [SerializeField] private PlayerConfigSO config;
+
+    public event Action<int, int> OnHpChanged;
 
     public int CurrentHp { get; private set; }
+    public int MaxHp => config != null ? config.maxHp : 1;
 
     private void Awake()
     {
-        CurrentHp = maxHp;
+        CurrentHp = MaxHp;
+    }
+
+    private void Start()
+    {
+        OnHpChanged?.Invoke(CurrentHp, MaxHp);
+    }
+
+    public void ResetHpFromConfig()
+    {
+        CurrentHp = MaxHp;
+        OnHpChanged?.Invoke(CurrentHp, MaxHp);
+    }
+
+    public void SetHpFromSave(int value)
+    {
+        CurrentHp = Mathf.Clamp(value, 0, MaxHp);
+        OnHpChanged?.Invoke(CurrentHp, MaxHp);
     }
 
     public void TakeDamage(int value)
     {
-        CurrentHp = Mathf.Max(0, CurrentHp - value);
-        Debug.Log($"Player HP: {CurrentHp}");
+        CurrentHp = Mathf.Clamp(CurrentHp - value, 0, MaxHp);
+        OnHpChanged?.Invoke(CurrentHp, MaxHp);
 
         if (CurrentHp <= 0)
         {
-            Debug.Log("Player Dead");
+            Debug.Log("Player dead");
         }
+    }
+
+    public void Heal(int value)
+    {
+        CurrentHp = Mathf.Clamp(CurrentHp + value, 0, MaxHp);
+        OnHpChanged?.Invoke(CurrentHp, MaxHp);
     }
 }
