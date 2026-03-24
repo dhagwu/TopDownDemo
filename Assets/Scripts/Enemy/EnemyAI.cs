@@ -248,6 +248,8 @@ public class EnemyAI : MonoBehaviour, IDamageable
 
     private void Die()
     {
+        GameAudioManager.Instance?.PlayEnemyDeath();
+
         if (hudController != null)
             hudController.AddKill();
 

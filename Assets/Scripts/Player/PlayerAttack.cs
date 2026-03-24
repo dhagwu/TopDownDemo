@@ -53,6 +53,8 @@ public class PlayerAttack : MonoBehaviour
         if (animator != null)
             animator.SetTrigger("Attack");
 
+        GameAudioManager.Instance?.PlayPlayerAttack();
+
         Collider[] hits = Physics.OverlapSphere(
             attackPoint.position,
             config.attackRadius,

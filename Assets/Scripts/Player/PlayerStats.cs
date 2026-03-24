@@ -35,7 +35,15 @@ public class PlayerStats : MonoBehaviour
 
     public void TakeDamage(int value)
     {
+        if (value <= 0)
+            return;
+
+        int previousHp = CurrentHp;
         CurrentHp = Mathf.Clamp(CurrentHp - value, 0, MaxHp);
+
+        if (CurrentHp < previousHp)
+            GameAudioManager.Instance?.PlayPlayerHit();
+
         OnHpChanged?.Invoke(CurrentHp, MaxHp);
 
         if (CurrentHp <= 0)
