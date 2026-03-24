@@ -5,6 +5,7 @@ public class PlayerAttack : MonoBehaviour
 {
     [SerializeField] private InputActionReference attackAction;
     [SerializeField] private Transform attackPoint;
+    [SerializeField] private Animator animator;
     [SerializeField] private float attackRadius = 1.2f;
     [SerializeField] private int damage = 1;
     [SerializeField] private float cooldown = 0.35f;
@@ -35,6 +36,11 @@ public class PlayerAttack : MonoBehaviour
         if (cooldownTimer > 0f) return;
 
         cooldownTimer = cooldown;
+
+        if (animator != null)
+        {
+            animator.SetTrigger("Attack");
+        }
 
         Collider[] hits = Physics.OverlapSphere(
             attackPoint.position,

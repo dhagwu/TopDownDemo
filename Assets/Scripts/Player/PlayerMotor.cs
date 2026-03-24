@@ -10,6 +10,7 @@ public class PlayerMotor : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private Transform modelRoot;
+    [SerializeField] private Animator animator;
 
     [Header("Move Settings")]
     [SerializeField] private float moveSpeed = 5f;
@@ -86,6 +87,11 @@ public class PlayerMotor : MonoBehaviour
                 targetRot,
                 turnSpeed * Time.deltaTime
             );
+        }
+
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", moveDir.magnitude);
         }
     }
 

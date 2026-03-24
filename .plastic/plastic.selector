@@ -1,4 +1,0 @@
-repository "TopDownDemo/TopDownDemo@12369702378581@cloud"
-  path "/"
-    br "/main"
-    co "/main"
