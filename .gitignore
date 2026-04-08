@@ -6,6 +6,11 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
+/Settings/
+/TextMesh Pro/
+/ThirdParty/
+/TutorialInfo/
+/XLua/
 
 *.csproj
 *.sln
@@ -17,3 +22,5 @@
 *.mdb
 *.opendb
 *.VC.db
+*.cs.meta
+*.meta
