@@ -66,7 +66,7 @@ public class PlayerAttack : MonoBehaviour
             IDamageable damageable = hit.GetComponentInParent<IDamageable>();
             if (damageable != null)
             {
-                damageable.TakeDamage(config.attackDamage);
+                damageable.TakeDamage(GetDamage());
             }
         }
     }
@@ -79,5 +79,15 @@ public class PlayerAttack : MonoBehaviour
         Gizmos.color = Color.red;
         float radius = config != null ? config.attackRadius : 1f;
         Gizmos.DrawWireSphere(attackPoint.position, radius);
+    }
+
+    public virtual int GetDamage()
+    {
+        return GetBaseConfigDamage();
+    }
+
+    public int GetBaseConfigDamage()
+    {
+        return config != null ? config.attackDamage : 0;
     }
 }
