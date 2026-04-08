@@ -11,6 +11,9 @@
 /ThirdParty/
 /TutorialInfo/
 /XLua/
+/Tools/
+/Packages/
+/ProjectSettings/
 
 *.csproj
 *.sln
